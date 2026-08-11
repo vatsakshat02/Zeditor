@@ -9,3 +9,4 @@ print(response.choices[0].message.content)
 print(response.usage.prompt_tokens)
 print(response.usage.completion_tokens)
 print(response.choices[0].finish_reason)
+
