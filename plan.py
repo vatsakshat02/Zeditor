@@ -32,19 +32,17 @@ def get_color_plan():
     
     message = client.messages.create(model="claude-sonnet-5", max_tokens=3000, system=SYSTEM_COLOR,messages=[{"role":"user","content":TEST_INPUT}])
 
-    print(message.stop_reason)
+    raw_text = None
 
     for block in message.content:
         if block.type == "text":
             raw_text = block.text
 
+    if raw_text is None:
+        raise ValueError('No text block in the response')
+
     plan = json.loads(raw_text)
-    print(plan)
-    print(type(plan))
-
-    for adj in plan["adjustments"]:
-        print(adj["parameter"],adj["value"])
-
+    
     return plan
 
 failures = 0
