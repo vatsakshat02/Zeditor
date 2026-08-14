@@ -31,7 +31,7 @@ class ColorPlan(BaseModel):
 
 client = Anthropic()
 
-def get_color_plan():
+def get_color_plan()-> ColorPlan:
 
     message = client.messages.parse(max_tokens=3000, model='claude-sonnet-5', system=SYSTEM_COLOR, messages=[{"role":"user", "content":TEST_INPUT}],output_format=ColorPlan)
 

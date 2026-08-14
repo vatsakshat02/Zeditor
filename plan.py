@@ -1,6 +1,5 @@
 from anthropic import Anthropic
 from dotenv import load_dotenv
-import json
 
 load_dotenv()
 
