@@ -62,5 +62,7 @@ for i in range(10):
         print(f"{i+1}: FAILED - {type(e).__name__}: {e} ")
 print(f"{10 - failures}/10 parsed")
 
+print("parameter min max count")
+
 for parameter, values in variance.items():
     print(parameter, min(values), max(values), len(values))
