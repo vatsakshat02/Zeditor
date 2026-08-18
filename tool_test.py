@@ -19,22 +19,58 @@ tools = [
                 },
                 "required": ["file_path"]
         }
+    },
+    {
+        "name":"get_frame_brightness",
+        "description": "Identify the brightness of the footage. Call this after you have identified the source camera",
+        "input_schema": {
+            "type":"object",
+            "properties": {
+                    "file_path":{
+                        "type":"string",
+                        "description":"How much is the brightness of the footage"
+                    }
+            },
+             "required":["file_path"]
+        }
+       
     }
 ]
+
 
 def get_camera_info(file_path):
     return "Iphone 15 pro Camera"
 
-message = client.messages.create(model="claude-sonnet-5", max_tokens=3000, tools=tools, messages=[{"role":"user","content":"I need to grade clip.mp4. What am I working with?"}])    
+def get_frame_brightness(file_path):
+    return 3400.91
 
+TOOLS_FUNCTIONS = {
+    "get_camera_info":get_camera_info,
+    "get_frame_brightness":get_frame_brightness
+}
 
-for block in message.content:
-    if block.type == "tool_use":
-        plan = get_camera_info(block.input["file_path"])
-        response = client.messages.create(model="claude-sonnet-5",max_tokens=3000,tools=tools, messages=[{"role":"user","content": "I need to grade clip.mp4. What am I working with?"},{"role":"assistant","content": message.content},{"role":"user","content": [{"type":"tool_result","tool_use_id":block.id,"content":plan}]}])
+messages = [{"role": "user", "content": "I need to grade clip.mp4. Tell me what I'm working with."}]    
 
-print(response.stop_reason)
+for _ in range(10):
+    response = client.messages.create(model="claude-sonnet-5", max_tokens=3000, tools=tools, messages=messages)
+
+    if response.stop_reason != "tool_use":
+        break
+
+    messages.append({"role":"assistant","content":response.content})
+
+    result = []
+    for block in response.content:
+        if block.type == "tool_use":
+            print("calling:", block.name, block.input)
+            output = TOOLS_FUNCTIONS[block.name](**block.input)
+            result.append({
+                "type":"tool_result",
+                "tool_use_id": block.id,
+                "content":str(output)
+            })
+    messages.append({"role":"user","content":result})
+
 for b in response.content:
-    if b.type == "text":
-        print(b.text)
-
+     if b.type =="text":
+       print(b.text)
