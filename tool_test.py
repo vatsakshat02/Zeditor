@@ -63,7 +63,28 @@ def get_video_info(file_path):
     
 
 def get_frame_brightness(file_path):
-    return 3400.91
+    cmd = ["ffmpeg", "-i", file_path, "-vf", r"select='eq(n\,100)',signalstats,metadata=print", "-f", "null", "-" ]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return f"could not read the file"
+    stats = {}
+    parsed_output = ["YAVG", "YMIN", "YMAX" ,"SATAVG"]
+
+    for line in r.stderr.splitlines():
+        if "signalstats" in line:
+            for field in parsed_output:
+                if field in line:
+                    stats[field] = float(line.split("=")[1])
+
+    return (
+    f"Measured from frame 100 only, not the whole clip. "
+    f"Average luma {stats['YAVG']} on a 0-255 scale (128 = mid-grey). "
+    f"Range {stats['YMIN']} to {stats['YMAX']}. "
+    f"Average saturation {stats['SATAVG']} on a 0-255 scale."
+)
+                
+
+    
 
 TOOLS_FUNCTIONS = {
     "get_video_info":get_video_info,
