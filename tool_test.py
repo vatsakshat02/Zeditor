@@ -1,6 +1,8 @@
 from anthropic import Anthropic
 from dotenv import load_dotenv
 import subprocess, json
+import os
+import math
 
 load_dotenv()
 
@@ -35,6 +37,41 @@ tools = [
              "required":["file_path"]
         }
        
+    },
+    {
+        "name":"apply_grade",
+        "description": "It grades your footage and writes a new file for that graded footage. The scale of parameters are: Temperature = -100 to +100, exposure is in stops: -2 to +2, tint = -100 to +100, contrast = -100 to +100, saturation = -100 to +100",
+        "input_schema":{
+            "type":"object",
+            "properties": {
+                "file_path":{
+                    "type":"string",
+                    "description": "Tells where the file is located"
+                },
+                "temperature":{
+                    "type":"number",
+                    "description": "tells us the temperature of the footage. negative number means cooler and positive means warmer and 0 means unchanged."
+                }, 
+                "tint":{
+                    "type":"number",
+                    "description": "Tells us how much tint is in the footage.  0 means unchanged and negative means decreasing the value of the tint(greenish) and positive means increasing the value of the tint(magenta)"
+                },
+                "exposure":{
+                    "type":"number",
+                    "description": "tells us how bright the footage is. Measured in stops where 0 is unchanged "
+                },
+                "contrast":{
+                    "type":"number",
+                    "description": "tells us about the contrast of the footage. 0 means unchanged and negative means decreasing the value of the contrast and positive means increasing the value of the contrast."
+                },
+                "saturation":{
+                    "type":"number",
+                    "description": "tells us about the saturation of the footage. 0 means unchanged and negative means decreasing the value of the saturation and positive means increasing the value of the saturation"
+                }
+            },
+            "required": ["file_path", "temperature", "saturation", "exposure", "contrast", "tint"]
+        }
+        
     }
 ]
 
@@ -83,15 +120,40 @@ def get_frame_brightness(file_path):
     f"Average saturation {stats['SATAVG']} on a 0-255 scale."
 )
                 
+def build_filter(temperature, tint, exposure, contrast, saturation):
+    new_contrast = 1 + (contrast/100)
+    new_gamma =  2 ** (exposure / 2)
+    new_saturation = 1 + (saturation/100)
+    rm = temperature/1000
+    bm = -temperature/1000
+    gm = -tint/1000
 
-    
+
+    return f"colorbalance=gm={gm}:rm={rm}:bm={bm},eq=gamma={new_gamma}:contrast={new_contrast}:saturation={new_saturation}"
+
+
+
+
+
+def apply_grade(file_path, temperature, tint, exposure, contrast, saturation):
+    vf = build_filter(temperature, tint, exposure, contrast, saturation)
+    base,ext = os.path.splitext(file_path)
+    output_path = f"{base}_graded{ext}"
+    cmd = ["ffmpeg","-y", "-i", file_path, "-vf", vf, "-c:a", "copy", output_path]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return f"Something went wrong {r.stderr}"
+    return f"your file is in {output_path}, and here are the changes that were made: {vf}"
+
+
 
 TOOLS_FUNCTIONS = {
     "get_video_info":get_video_info,
-    "get_frame_brightness":get_frame_brightness
+    "get_frame_brightness":get_frame_brightness,
+    "apply_grade": apply_grade
 }
 
-messages = [{"role": "user", "content": "I need to grade /Users/akshatvats/Downloads/talking_head_1.MP4. Tell me what I'm working with."}]    
+messages = [{"role": "user", "content": " grade /Users/akshatvats/Downloads/talking_head_1.MP4 and do all the color correction"}]    
 
 for _ in range(10):
     response = client.messages.create(model="claude-sonnet-5", max_tokens=3000, tools=tools, messages=messages)
