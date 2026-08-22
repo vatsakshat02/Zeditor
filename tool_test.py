@@ -87,14 +87,19 @@ def get_video_info(file_path):
     height = streams["height"]
     codec_name = streams["codec_name"]
     color_transfer = streams.get("color_transfer","unknown")
-    bits_per_raw_sample = streams["bits_per_raw_sample"]
-    duration = streams["duration"]
-    nums = streams["avg_frame_rate"].split("/")
-    avg_frame_rate = round(float(nums[0])/float(nums[1]),2)
+    bits_per_raw_sample = streams.get("bits_per_raw_sample","unknown")
+    duration = streams.get("duration","unknown")
+    nums = streams.get("avg_frame_rate","0/0").split("/")
+    avg_frame_rate = f"{round(float(nums[0])/float(nums[1]),2)}" if float(nums[1]) != 0 else "unknown"
+   
+    frame_rate = f"{avg_frame_rate}fps" if avg_frame_rate != "unknown" else "Cannot detect any frame rate"
+    depth = f"{bits_per_raw_sample}-bit" if bits_per_raw_sample != "unknown" else "bit depth unknown"
+
+    
     
     return (
-    f"{width}x{height}, {avg_frame_rate}fps, {codec_name}, "
-    f"{bits_per_raw_sample}-bit, colour transfer {color_transfer}, "
+    f"{width}x{height}, {frame_rate}, {codec_name}, "
+    f"{depth}, colour transfer {color_transfer}, "
     f"{duration}s duration."
     )
     
@@ -105,25 +110,32 @@ def get_frame_brightness(file_path):
     if r.returncode != 0:
         return f"could not read the file"
     stats = {}
-    parsed_output = ["YAVG", "YMIN", "YMAX" ,"SATAVG"]
+    parsed_output = ["YAVG", "YMIN", "YMAX" ,"SATAVG", "UAVG", "VAVG"]
 
     for line in r.stderr.splitlines():
         if "signalstats" in line:
             for field in parsed_output:
                 if field in line:
-                    stats[field] = float(line.split("=")[1])
+                    q = line.split("=")[0]
+                    s = q.split(".")[-1]
+                    if s == field:
+                        stats[field] = float(line.split("=")[1])
+
+    print(stats)
 
     return (
     f"Measured from frame 100 only, not the whole clip. "
     f"Average luma {stats['YAVG']} on a 0-255 scale (128 = mid-grey). "
     f"Range {stats['YMIN']} to {stats['YMAX']}. "
-    f"Average saturation {stats['SATAVG']} on a 0-255 scale."
+    f"Average saturation {stats['SATAVG']} on a 0-255 scale. "
+    f"Chroma: U average {stats['UAVG']}, V average {stats['VAVG']}, both on a 0-255 scale where 128 is neutral. "
+    f"U above 128 is a blue cast, below is yellow. V above 128 is a red/magenta cast, below is green/cyan."
 )
                 
 def build_filter(temperature, tint, exposure, contrast, saturation):
     new_contrast = 1 + (contrast/100)
     new_gamma =  2 ** (exposure / 2)
-    new_saturation = 1 + (saturation/100)
+    new_saturation = 1 + (saturation/70)
     rm = temperature/1000
     bm = -temperature/1000
     gm = -tint/1000
@@ -153,7 +165,7 @@ TOOLS_FUNCTIONS = {
     "apply_grade": apply_grade
 }
 
-messages = [{"role": "user", "content": " grade /Users/akshatvats/Downloads/talking_head_1.MP4 and do all the color correction"}]    
+messages = [{"role": "user", "content": " grade /Users/akshatvats/Desktop/all files/untitled folder/C0078.MP4 and do all the color correction"}]    
 
 for _ in range(10):
     response = client.messages.create(model="claude-sonnet-5", max_tokens=3000, tools=tools, messages=messages)
