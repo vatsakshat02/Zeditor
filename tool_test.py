@@ -110,7 +110,7 @@ def get_frame_brightness(file_path):
     if r.returncode != 0:
         return f"could not read the file"
     stats = {}
-    parsed_output = ["YAVG", "YMIN", "YMAX" ,"SATAVG", "UAVG", "VAVG"]
+    parsed_output = ["YAVG", "YMIN", "YMAX" ,"SATAVG", "UAVG", "VAVG", "VBITDEPTH"]
 
     for line in r.stderr.splitlines():
         if "signalstats" in line:
@@ -121,15 +121,20 @@ def get_frame_brightness(file_path):
                     if s == field:
                         stats[field] = float(line.split("=")[1])
 
+    bit_depth = int(stats["VBITDEPTH"])
+    max_scale = 2**bit_depth-1
+    neutral = 2**bit_depth//2
+
     print(stats)
 
     return (
     f"Measured from frame 100 only, not the whole clip. "
-    f"Average luma {stats['YAVG']} on a 0-255 scale (128 = mid-grey). "
+    f"Average luma {stats['YAVG']} on a 0-{max_scale} scale ({neutral}= mid-grey). "
     f"Range {stats['YMIN']} to {stats['YMAX']}. "
-    f"Average saturation {stats['SATAVG']} on a 0-255 scale. "
-    f"Chroma: U average {stats['UAVG']}, V average {stats['VAVG']}, both on a 0-255 scale where 128 is neutral. "
-    f"U above 128 is a blue cast, below is yellow. V above 128 is a red/magenta cast, below is green/cyan."
+    f"Average saturation {stats['SATAVG']} on a 0-{max_scale} scale. "
+    f"Chroma: U average {stats['UAVG']}, V average {stats['VAVG']}, both on a 0-{max_scale} scale where {neutral} is neutral. "
+    f"U above {neutral} is a blue cast, below is yellow. V above {neutral} is a red/magenta cast, below is green/cyan. "
+
 )
                 
 def build_filter(temperature, tint, exposure, contrast, saturation):
@@ -165,7 +170,7 @@ TOOLS_FUNCTIONS = {
     "apply_grade": apply_grade
 }
 
-messages = [{"role": "user", "content": " grade /Users/akshatvats/Desktop/all files/untitled folder/C0078.MP4 and do all the color correction"}]    
+messages = [{"role": "user", "content": " grade /Users/akshatvats/Downloads/IMG_3098.MOV and do all the color correction"}]    
 
 for _ in range(10):
     response = client.messages.create(model="claude-sonnet-5", max_tokens=3000, tools=tools, messages=messages)
