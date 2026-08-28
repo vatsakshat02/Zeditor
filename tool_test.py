@@ -24,14 +24,14 @@ tools = [
         }
     },
     {
-        "name":"get_frame_brightness",
-        "description": "Identify the brightness of the footage. Call this after you have identified the information from the video",
+        "name":"get_frame_info",
+        "description": "Identify the info of the footage. Call this after you have identified the information from the video",
         "input_schema": {
             "type":"object",
             "properties": {
                     "file_path":{
                         "type":"string",
-                        "description":"How much is the brightness of the footage"
+                        "description":"path to the video file to analyse"
                     }
             },
              "required":["file_path"]
@@ -40,7 +40,7 @@ tools = [
     },
     {
         "name":"apply_grade",
-        "description": "It grades your footage and writes a new file for that graded footage. The scale of parameters are: Temperature = -100 to +100, exposure is in stops: -2 to +2, tint = -100 to +100, contrast = -100 to +100, saturation = -100 to +100",
+        "description": "It grades your footage and writes a new file for that graded footage. The scale of parameters are: Temperature = -100 to +100, exposure is in stops: -2 to +2, tint = -100 to +100, contrast = -100 to +100, saturation = -100 to +100, VAVG is the value of the red to green cast in the video",
         "input_schema":{
             "type":"object",
             "properties": {
@@ -67,9 +67,17 @@ tools = [
                 "saturation":{
                     "type":"number",
                     "description": "tells us about the saturation of the footage. 0 means unchanged and negative means decreasing the value of the saturation and positive means increasing the value of the saturation"
+                },
+                "bit_depth": {
+                    "type": "number",
+                    "description":"tells us about the bit depth of the video."
+                },
+                "VAVG": {
+                    "type":"number",
+                    "description":"VAVG is the value of red to green cast of the video"
                 }
             },
-            "required": ["file_path", "temperature", "saturation", "exposure", "contrast", "tint"]
+            "required": ["file_path", "temperature", "saturation", "exposure", "contrast", "tint","bit_depth","VAVG"]
         }
         
     }
@@ -104,7 +112,7 @@ def get_video_info(file_path):
     )
     
 
-def get_frame_brightness(file_path):
+def get_frame_info(file_path):
     cmd = ["ffmpeg", "-i", file_path, "-vf", r"select='eq(n\,100)',signalstats,metadata=print", "-f", "null", "-" ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
@@ -134,26 +142,32 @@ def get_frame_brightness(file_path):
     f"Average saturation {stats['SATAVG']} on a 0-{max_scale} scale. "
     f"Chroma: U average {stats['UAVG']}, V average {stats['VAVG']}, both on a 0-{max_scale} scale where {neutral} is neutral. "
     f"U above {neutral} is a blue cast, below is yellow. V above {neutral} is a red/magenta cast, below is green/cyan. "
+    f"Bit depth of the video is {bit_depth}"
 
 )
                 
-def build_filter(temperature, tint, exposure, contrast, saturation):
+def build_filter(temperature, tint, exposure, contrast, saturation, VAVG, neutral, max_scale):
     new_contrast = 1 + (contrast/100)
     new_gamma =  2 ** (exposure / 2)
     new_saturation = 1 + (saturation/70)
-    rm = temperature/1000
+    normalised = (VAVG - neutral)/max_scale
+    rm = -normalised/0.31
+    rs = -normalised/0.31
+    rh = -normalised/0.31
     bm = -temperature/1000
     gm = -tint/1000
 
 
-    return f"colorbalance=gm={gm}:rm={rm}:bm={bm},eq=gamma={new_gamma}:contrast={new_contrast}:saturation={new_saturation}"
+    return f"colorbalance=gm={gm}:rs={rs}:rm={rm}:rh={rh}:bm={bm},eq=gamma={new_gamma}:contrast={new_contrast}:saturation={new_saturation}"
 
 
 
 
 
-def apply_grade(file_path, temperature, tint, exposure, contrast, saturation):
-    vf = build_filter(temperature, tint, exposure, contrast, saturation)
+def apply_grade(file_path, temperature, tint, exposure, contrast, saturation, bit_depth,VAVG):
+    max_scale = 2**bit_depth-1
+    neutral = 2**bit_depth//2
+    vf = build_filter(temperature, tint, exposure, contrast, saturation, VAVG, neutral, max_scale)
     base,ext = os.path.splitext(file_path)
     output_path = f"{base}_graded{ext}"
     cmd = ["ffmpeg","-y", "-i", file_path, "-vf", vf, "-c:a", "copy", output_path]
@@ -166,32 +180,34 @@ def apply_grade(file_path, temperature, tint, exposure, contrast, saturation):
 
 TOOLS_FUNCTIONS = {
     "get_video_info":get_video_info,
-    "get_frame_brightness":get_frame_brightness,
+    "get_frame_info":get_frame_info,
     "apply_grade": apply_grade
 }
 
-messages = [{"role": "user", "content": " grade /Users/akshatvats/Downloads/IMG_3098.MOV and do all the color correction"}]    
+messages = [{"role": "user", "content": " grade /Users/akshatvats/Desktop/all files/untitled folder/C0078.MP4 and do all the color correction"}]  
 
-for _ in range(10):
-    response = client.messages.create(model="claude-sonnet-5", max_tokens=3000, tools=tools, messages=messages)
+if __name__ == "__main__":
 
-    if response.stop_reason != "tool_use":
-        break
+    for _ in range(10):
+        response = client.messages.create(model="claude-sonnet-5", max_tokens=3000, tools=tools, messages=messages)
 
-    messages.append({"role":"assistant","content":response.content})
+        if response.stop_reason != "tool_use":
+            break
 
-    result = []
-    for block in response.content:
-        if block.type == "tool_use":
-            print("calling:", block.name, block.input)
-            output = TOOLS_FUNCTIONS[block.name](**block.input)
-            result.append({
-                "type":"tool_result",
-                "tool_use_id": block.id,
-                "content":str(output)
-            })
-    messages.append({"role":"user","content":result})
+        messages.append({"role":"assistant","content":response.content})
 
-for b in response.content:
-     if b.type =="text":
-       print(b.text)
+        result = []
+        for block in response.content:
+            if block.type == "tool_use":
+                print("calling:", block.name, block.input)
+                output = TOOLS_FUNCTIONS[block.name](**block.input)
+                result.append({
+                    "type":"tool_result",
+                    "tool_use_id": block.id,
+                    "content":str(output)
+                })
+        messages.append({"role":"user","content":result})
+
+    for b in response.content:
+        if b.type =="text":
+            print(b.text)
